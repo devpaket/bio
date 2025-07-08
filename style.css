@@ -252,6 +252,20 @@ footer .footer-links a:hover {
 .badge-studio { border-color: #40c4ff; color: #40c4ff; background: #222; animation-delay: 0.35s; }
 .badge-shop { border-color: #2979ff; color: #2979ff; background: #222; animation-delay: 0.5s; }
 .badge-live { border-color: #3bff7a; color: #3bff7a; background: #222; animation-delay: 0.65s; }
+.badge-forum {
+  border-color: #176a3a;
+  color: #176a3a;
+  background: #222;
+  animation: badgeIn 0.7s cubic-bezier(.23,1.01,.32,1) forwards;
+  animation-delay: 0.7s;
+  text-decoration: none !important;
+}
+.badge-forum:hover {
+  background: #176a3a;
+  color: #fff;
+  border-color: #176a3a;
+  text-decoration: none !important;
+}
 @keyframes badgeIn {
   0% { opacity: 0; transform: translateY(-10px) scale(0.95); }
   100% { opacity: 1; transform: none; }
@@ -438,6 +452,7 @@ footer .footer-links a:hover {
 .profile-gift[data-pos="bottom-right"] { right: 8px; bottom: 8px; }
 .profile-gift[data-pos="bottom-left"] { left: 8px; bottom: 8px; }
 .profile-gift[data-pos="left"] { left: -18px; top: 50%; transform: translateY(-50%); }
+.profile-gift[data-pos="center-right"] { right: -18px; top: 30%; transform: translateY(-50%); }
 .profile-gift:active, .profile-gift.show, .profile-gift:focus { box-shadow: 0 4px 16px 0 #229ed988; }
 .gift-popup {
   display: block;
@@ -624,6 +639,7 @@ footer .footer-links a:hover {
   .profile-gift[data-pos="bottom-right"] { right: 4px; bottom: 4px; }
   .profile-gift[data-pos="bottom-left"] { left: 4px; bottom: 4px; }
   .profile-gift[data-pos="left"] { left: -10px; }
+  .profile-gift[data-pos="center-right"] { right: -10px; top: 30%; }
   .gift-popup {
     min-width: 140px;
     max-width: 180px;
