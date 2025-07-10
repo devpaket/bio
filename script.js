@@ -20,11 +20,14 @@ document.querySelectorAll('.badge').forEach(badge => {
 document.querySelectorAll('.profile-gift').forEach(gift => {
   gift.addEventListener('click', (e) => {
     e.stopPropagation();
+    const isOpen = gift.classList.contains('show');
     document.querySelectorAll('.profile-gift').forEach(g => g.classList.remove('show'));
-    gift.classList.toggle('show');
+    if (!isOpen) {
+      gift.classList.add('show');
+    }
   });
 });
-document.addEventListener('click', () => {
+document.addEventListener('click', function() {
   document.querySelectorAll('.profile-gift').forEach(g => g.classList.remove('show'));
 });
 
@@ -174,12 +177,32 @@ document.addEventListener('click', () => {
     avatar.style.boxShadow = `0 0 48px 18px ${base[0]}`;
     avatar.style.setProperty('--glow-color', base[0]);
   }
-  setAtmosphericGlow();
-  setInterval(setAtmosphericGlow, 60000); // обновлять раз в минуту
+
+  // Удаляю прежний вызов setAtmosphericGlow();
+  // setAtmosphericGlow();
+  // setInterval(setAtmosphericGlow, 60000); // убираю прежний таймер
+
+  // Новый способ: цвет устанавливается только после загрузки погоды
+  function updateGlowAfterWeather() {
+    setAtmosphericGlow();
+    // Обновлять цвет раз в минуту только если погода успешно загружена
+    if (window.__glowInterval) clearInterval(window.__glowInterval);
+    window.__glowInterval = setInterval(setAtmosphericGlow, 60000);
+  }
+  window.addEventListener('weatherLoaded', updateGlowAfterWeather);
+
+  // Если погода уже загружена к моменту инициализации (например, скрипт перезапущен)
+  if (window.__lastWeatherData) {
+    setAtmosphericGlow();
+    if (window.__glowInterval) clearInterval(window.__glowInterval);
+    window.__glowInterval = setInterval(setAtmosphericGlow, 60000);
+  }
 
   // Накопительное расширение свечения при кликах
   let glowLevel = 0;
   let glowTimeout = null;
+  const REJECT_THRESHOLD = 6;
+
   function updateGlowExpand() {
     // Максимальный радиус — 48 + 32*glowLevel (ограничим до 5 кликов)
     const key = getWeatherTimeKeyCustom();
@@ -189,8 +212,18 @@ document.addEventListener('click', () => {
     avatar.style.boxShadow = `0 0 ${radius}px ${spread}px ${base[0]}`;
     avatar.style.setProperty('--glow-color', base[0]);
   }
+
   avatar.addEventListener('click', () => {
     glowLevel++;
+    if (glowLevel >= REJECT_THRESHOLD) {
+      avatar.classList.add('reject-shake');
+      setTimeout(() => {
+        avatar.classList.remove('reject-shake');
+        glowLevel = 0;
+        setAtmosphericGlow();
+      }, 900); // длительность анимации
+      return;
+    }
     updateGlowExpand();
     if (glowTimeout) clearTimeout(glowTimeout);
     glowTimeout = setTimeout(() => {
@@ -330,22 +363,54 @@ window.addEventListener('ekbTimeLoaded', function() {
 (function flyingObjects() {
   // SVG-иконки и эмодзи
   const ICONS = {
-    sun: `<span style="font-size:32px;line-height:1;user-select:none;">☁️</span>`, // облако вместо солнца
-    moon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M28 18c0 6.627-5.373 12-12 12-2.1 0-4.07-0.54-5.75-1.5C16.5 28 24 20.5 24 10.75c0-1.68-0.19-3.31-0.54-4.85C26.13 8.93 28 13.19 28 18z" fill="#fff"/></svg>`,
+    cloud: `<span style="font-size:32px;line-height:1;user-select:none;">☁️</span>`,
     star: `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="16,4 19,13 29,13 21,19 24,28 16,22 8,28 11,19 3,13 13,13" fill="#fff"/></svg>`
   };
   const container = document.querySelector('.flying-bags');
-  // pixel-counter больше не нужен, убираем проверку
   if (!container) return;
   const OBJ_COUNT = 11;
   function random(min, max) { return Math.random() * (max - min) + min; }
-  function getTimeOfDay() {
-    const hour = new Date().getHours();
-    if (hour >= 6 && hour < 19) return 'sun'; // утро и день
-    if (hour >= 19 && hour < 23) return 'moon'; // вечер
-    return 'star'; // ночь
+
+  // Получаем точное время Екатеринбурга (если есть)
+  function getEkbHour() {
+    if (window.__ekbTime) {
+      let ekb = new Date(window.__ekbTime);
+      if (window.__ekbTimeFetchLocal) {
+        const diff = Date.now() - window.__ekbTimeFetchLocal;
+        ekb = new Date(ekb.getTime() + diff);
+      }
+      return ekb.getHours();
+    }
+    // fallback: local time
+    return new Date().getHours();
   }
+
+  // Получаем текущую погоду (Rain/Drizzle/Clouds/...) из window.__lastWeatherData
+  function getWeatherMain() {
+    if (window.__lastWeatherData && window.__lastWeatherData.weather && window.__lastWeatherData.weather[0]) {
+      return window.__lastWeatherData.weather[0].main;
+    }
+    return null;
+  }
+
+  function getIconType() {
+    const hour = getEkbHour();
+    const weather = getWeatherMain();
+    // Если дождь — только облака
+    if (weather === 'Rain' || weather === 'Drizzle') return 'cloud';
+    // Если ночь по Екатеринбургу (22:00–4:00) — только звёзды
+    if (hour >= 22 || hour < 4) return 'star';
+    // В остальное время — ничего не падает
+    return null;
+  }
+
   function launchObj(obj, iconType) {
+    if (!iconType) {
+      obj.style.opacity = 0;
+      setTimeout(() => launchObj(obj, getIconType()), 3000);
+      return;
+    }
+    obj.innerHTML = ICONS[iconType];
     const startX = random(0, window.innerWidth - 40);
     const endX = startX + random(-80, 80);
     const size = random(28, 48);
@@ -369,7 +434,7 @@ window.addEventListener('ekbTimeLoaded', function() {
       setTimeout(() => {
         obj.style.transition = 'none';
         obj.style.transform = 'none';
-        launchObj(obj, iconType);
+        launchObj(obj, getIconType());
       }, 700);
     }, duration * 1000 + delay * 1000);
   }
@@ -380,16 +445,188 @@ window.addEventListener('ekbTimeLoaded', function() {
     setTimeout(() => {
       obj.style.transition = 'none';
       obj.style.transform = 'none';
-      launchObj(obj, getTimeOfDay());
+      launchObj(obj, getIconType());
     }, 1200);
   }
   for (let i = 0; i < OBJ_COUNT; ++i) {
-    const iconType = getTimeOfDay();
+    const iconType = getIconType();
     const obj = document.createElement('div');
     obj.className = 'flying-bag collectable';
-    obj.innerHTML = ICONS[iconType];
+    if (iconType) obj.innerHTML = ICONS[iconType];
     obj.addEventListener('click', () => collectObj(obj));
     container.appendChild(obj);
-    setTimeout(() => launchObj(obj, iconType), i * 900 + Math.random() * 500);
+    setTimeout(() => launchObj(obj, getIconType()), i * 900 + Math.random() * 500);
   }
+  // Обновлять объекты при смене погоды или времени
+  window.addEventListener('weatherLoaded', () => {
+    document.querySelectorAll('.flying-bag.collectable').forEach(obj => launchObj(obj, getIconType()));
+  });
+  window.addEventListener('ekbTimeLoaded', () => {
+    document.querySelectorAll('.flying-bag.collectable').forEach(obj => launchObj(obj, getIconType()));
+  });
+})();
+
+// Корректировка позиции pop-up подарков, чтобы не выходили за пределы окна
+function adjustGiftPopupPosition(gift) {
+  const popup = gift.querySelector('.gift-popup');
+  if (!popup) return;
+  // Сбросить классы и стили
+  popup.classList.remove('left', 'right', 'bottom');
+  popup.style.left = '';
+  popup.style.right = '';
+  popup.style.top = '';
+  popup.style.bottom = '';
+  popup.style.transform = '';
+  // Получить координаты
+  const rect = popup.getBoundingClientRect();
+  const pad = 8;
+  let needAdjust = false;
+  // Если выходит за левую границу
+  if (rect.left < pad) {
+    popup.style.left = (pad - rect.left) + 'px';
+    needAdjust = true;
+  }
+  // Если выходит за правую границу
+  if (rect.right > window.innerWidth - pad) {
+    // Смещаем влево на разницу
+    const shift = rect.right - (window.innerWidth - pad);
+    popup.style.left = (parseInt(popup.style.left || 0) - shift) + 'px';
+    needAdjust = true;
+  }
+  // Если выходит за верхнюю границу
+  if (rect.top < pad) {
+    popup.classList.add('bottom');
+    needAdjust = true;
+  }
+  // Если не нужно корректировать, сбрасываем left
+  if (!needAdjust) {
+    popup.style.left = '';
+  }
+}
+// Навешиваем обработчик на все подарки
+function setupGiftPopupAdjust() {
+  document.querySelectorAll('.profile-gift').forEach(gift => {
+    gift.addEventListener('mouseenter', () => {
+      setTimeout(() => adjustGiftPopupPosition(gift), 10);
+    });
+  });
+}
+setupGiftPopupAdjust();
+
+// Анимация нажатия для подарков
+function setupGiftPressAnimation() {
+  document.querySelectorAll('.profile-gift').forEach(gift => {
+    gift.addEventListener('mousedown', () => {
+      gift.classList.remove('gift-press');
+      void gift.offsetWidth; // reflow для повторной анимации
+      gift.classList.add('gift-press');
+      setTimeout(() => {
+        gift.classList.remove('gift-press');
+      }, 330);
+    });
+  });
+}
+setupGiftPressAnimation();
+
+// DEBUG: Проверка добавления класса show
+document.querySelectorAll('.profile-gift').forEach(gift => {
+  gift.addEventListener('click', function(e) {
+    e.stopPropagation();
+    document.querySelectorAll('.profile-gift').forEach(g => g.classList.remove('show'));
+    this.classList.add('show');
+    // DEBUG: Выводим в консоль
+    console.log('show added to', this);
+    // Добавлено: корректировка позиции pop-up при клике
+    adjustGiftPopupPosition(this);
+  });
+});
+document.addEventListener('click', function() {
+  document.querySelectorAll('.profile-gift').forEach(g => g.classList.remove('show'));
+});
+
+// Анимация отторжения для надписи PAKET
+(function paketNameRejectShake() {
+  const name = document.querySelector('.profile-name');
+  if (!name) return;
+  name.addEventListener('click', () => {
+    name.classList.add('reject-shake');
+    setTimeout(() => {
+      name.classList.remove('reject-shake');
+    }, 900);
+  });
+})();
+
+(function paketAbsorbLogic() {
+  const name = document.querySelector('.profile-name');
+  const avatar = document.querySelector('.avatar');
+  if (!name || !avatar) return;
+  let clickStreak = 0;
+  let lastClick = 0;
+  let absorbStage = 0; // 0: обычный, 1: shake-режим, 2: поглощение
+  let absorbed = false;
+  let shakeInProgress = false;
+
+  function playExpand(level) {
+    avatar.classList.remove('avatar-expand1', 'avatar-expand2');
+    void avatar.offsetWidth;
+    if (level === 1) {
+      avatar.classList.add('avatar-expand1');
+      setTimeout(() => avatar.classList.remove('avatar-expand1'), 600);
+    } else if (level === 2) {
+      avatar.classList.add('avatar-expand2');
+      setTimeout(() => avatar.classList.remove('avatar-expand2'), 700);
+    }
+  }
+  function playReject(cb) {
+    shakeInProgress = true;
+    name.classList.remove('reject-shake');
+    avatar.classList.remove('reject-shake');
+    void name.offsetWidth; void avatar.offsetWidth;
+    name.classList.add('reject-shake');
+    avatar.classList.add('reject-shake');
+    setTimeout(() => {
+      name.classList.remove('reject-shake');
+      avatar.classList.remove('reject-shake');
+      shakeInProgress = false;
+      if (cb) cb();
+    }, 900);
+  }
+  function absorb() {
+    absorbed = true;
+    name.classList.add('absorb');
+    avatar.classList.remove('absorb-glow');
+    avatar.classList.add('absorb-expand');
+    setTimeout(() => {
+      name.style.display = 'none';
+      avatar.classList.remove('absorb-expand');
+    }, 1100);
+  }
+  function handleClick() {
+    if (absorbed || shakeInProgress) return;
+    const now = Date.now();
+    if (now - lastClick > 2000) clickStreak = 0;
+    lastClick = now;
+    clickStreak++;
+    if (absorbStage === 0) {
+      if (clickStreak === 1) {
+        playExpand(1);
+      } else if (clickStreak === 2) {
+        playExpand(2);
+      } else if (clickStreak === 3) {
+        playReject(() => {
+          clickStreak = 0;
+          absorbStage = 1;
+        });
+      }
+    } else if (absorbStage === 1) {
+      playReject(() => {
+        if (clickStreak >= 3) {
+          absorb();
+          absorbStage = 2;
+        }
+      });
+    }
+  }
+  name.addEventListener('click', handleClick);
+  avatar.addEventListener('click', handleClick);
 })(); 
